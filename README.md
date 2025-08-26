@@ -1,149 +1,170 @@
 # jovingdetector
 
+⚠️ **Important Notice**
+Intended for authorized security audits only.
+This script is for educational purposes and for systems with **explicit permission**. Unauthorized use violates laws such as the Brazilian Penal Code (Art. 154-A), LGPD, or international regulations (e.g., GDPR). Use responsibly.
 
-Aviso Importante: 
-Voltado para auditorias de segurança autorizadas.
-Este script é para uso educacional e em sistemas com permissão explícita. Uso não autorizado viola leis como o Código Penal Brasileiro (art. 154-A), LGPD, ou regulamentos internacionais (). Use com responsabilidade.
+---
 
+## Features
 
-## Funcionalidades:
+* **File Scanning**: Calculates SHA-256 hash (OpenSSL) and applies YARA rules (libyara) to detect malware.
+* **Polymorphic Malware Analysis**: Detects obfuscation through entropy calculation (threshold: 7.0).
+* **Process Monitoring**: Identifies processes with high CPU usage (GetProcessList on Windows, `/proc` on Linux, `libproc` on macOS, `libprocstat` on FreeBSD).
+* **Memory Detection**: Scans memory for malicious patterns (`ReadProcessMemory`, `/proc/[pid]/mem`, `task_for_pid`, `/proc/[pid]/map`).
+* **Modification Detection**:
 
-Escaneamento de Arquivos: Calcula hash SHA-256 (OpenSSL) e aplica regras YARA (libyara) para detectar malwares.
-Análise de Malwares Polimórficos: Detecta ofuscação via cálculo de entropia (limite: 7.0).
-Monitoramento de Processos: Identifica processos com uso elevado de CPU (GetProcessList no Windows, /proc no Linux, libproc no macOS, libprocstat no FreeBSD).
-Detecção em Memória: Verifica padrões maliciosos na memória (ReadProcessMemory, /proc/[pid]/mem, task_for_pid, /proc/[pid]/map).
-Verificação de Alterações:
-Windows: Monitora alterações no registro (HKEY_LOCAL_MACHINE\\Run).
-Linux/macOS/FreeBSD: Verifica modificações em arquivos críticos (ex.: /etc/passwd, /Library/Extensions, /boot/modules).
+  * Windows: Monitors registry changes (`HKEY_LOCAL_MACHINE\\Run`).
+  * Linux/macOS/FreeBSD: Detects modifications in critical files (`/etc/passwd`, `/Library/Extensions`, `/boot/modules`).
+* **Network Detection**: Identifies suspicious connections (`GetTcpTable`, `/proc/net`, `netstat`).
+* **Rootkit Detection**: Scans for hidden processes and driver/module/kext alterations.
+* **JSON Reports**: Exports results in JSON format (logs/reports/).
+* **Alerting**: Supports file logging, webhook (Discord), email (SMTP with libesmtp), Splunk (HEC), ELK (HTTP), and SIEM (Windows events/syslog).
+* **Expanded GUI**: Start/Stop/Export buttons, CPU/threat graphs, and real-time logs (WinAPI, GTK, Cocoa).
+* **CPU Monitoring**: Pauses scans if CPU usage exceeds 80%.
+* **Threading**: Uses pthread for continuous scanning, logging, and interface.
 
+---
 
-Detecção de Rede: Identifica conexões suspeitas (GetTcpTable, /proc/net, netstat).
-Detecção de Rootkits: Verifica processos ocultos e alterações em drivers/módulos/kexts.
-Relatórios JSON: Exporta resultados em JSON (logs/reports/) para análise.
-Envio de Alertas: Suporta logging em arquivo, webhook (Discord), email (SMTP com libesmtp), Splunk (HEC), ELK (HTTP), e SIEM (eventos do Windows/syslog).
-Interface Gráfica Expandida: Inclui botões (Iniciar/Parar/Exportar), gráficos de CPU/ameaças, e logs em tempo real (WinAPI, GTK, Cocoa).
-Monitoramento de CPU: Pausa escaneamento se o uso de CPU exceder 80%.
-Threading: Usa pthread para escaneamento contínuo, logging, e interface.
+## Requirements
 
-## Requisitos:
+* **C Compiler**:
 
-Compilador C: GCC (Windows: MinGW, baixe em mingw-w64.org; Linux: padrão; macOS: Xcode; FreeBSD: padrão).
-Sistema Operacional: Windows 10/11, Linux (ex.: Ubuntu 24.04), macOS (ex.: Sonoma 14), FreeBSD (ex.: 14.0).
-Dependências:
-Windows: windows.h, iphlpapi.h (Windows SDK), libcurl, OpenSSL, json-c, libesmtp, libyara.
-Linux: libcurl, OpenSSL, json-c, libesmtp, libyara, libgtk-3-dev.
-macOS: libproc, Cocoa, libcurl, OpenSSL, json-c, libesmtp, libyara.
-FreeBSD: libprocstat, libcurl, OpenSSL, json-c, libesmtp, libyara, gtk3.
+  * Windows: MinGW ([mingw-w64.org](https://mingw-w64.org))
+  * Linux: Default GCC
+  * macOS: Xcode
+  * FreeBSD: Default
 
+* **Supported OS**:
 
-Estrutura do Ambiente: Máquina Windows/Linux/macOS/FreeBSD com permissão para testes de segurança.
-Bibliotecas:
-Windows: Instale libcurl, OpenSSL, json-c, libesmtp, libyara.
-Linux: sudo apt install libcurl4-openssl-dev libssl-dev libjson-c-dev libesmtp-dev libyara-dev libgtk-3-dev.
-macOS: brew install libcurl openssl json-c libesmtp yara.
-FreeBSD: pkg install libcurl openssl json-c libesmtp yara gtk3.
+  * Windows 10/11
+  * Linux (e.g., Ubuntu 24.04)
+  * macOS (e.g., Sonoma 14)
+  * FreeBSD (e.g., 14.0)
 
+* **Dependencies**:
 
+  * Windows: `windows.h`, `iphlpapi.h` (Windows SDK), `libcurl`, `OpenSSL`, `json-c`, `libesmtp`, `libyara`.
+  * Linux: `libcurl`, `OpenSSL`, `json-c`, `libesmtp`, `libyara`, `libgtk-3-dev`.
+  * macOS: `libproc`, `Cocoa`, `libcurl`, `OpenSSL`, `json-c`, `libesmtp`, `libyara`.
+  * FreeBSD: `libprocstat`, `libcurl`, `OpenSSL`, `json-c`, `libesmtp`, `libyara`, `gtk3`.
 
-## Instalação:
+---
 
-Crie um Repositório no GitHub (opcional para versionamento):
-Vá para github.com e crie um novo repositório chamado "MalwareDetector".
-Clone o repo: git clone https://github.com/hygark/jovingdetector.git.
+## Installation
 
+1. **Create a GitHub Repository (optional for versioning)**
 
-Adicione o Script:
-Copie o conteúdo de MalwareDetector.c para um arquivo C no seu diretório.
+   ```bash
+   git clone https://github.com/hygark/jovingdetector.git
+   ```
 
+2. **Add the Script**
+   Save the C code as `MalwareDetector.c` in your directory.
 
-## Instale Dependências:
+3. **Install Dependencies**
 
-Windows:
-Instale MinGW: mingw-w64.org.
-Instale libcurl, OpenSSL, json-c, libesmtp, libyara (ex.: mingw-get install libcurl libssl json-c libesmtp libyara).
+   * Windows: via mingw-get (`libcurl`, `libssl`, `json-c`, `libesmtp`, `libyara`)
+   * Linux:
 
+     ```bash
+     sudo apt update && sudo apt install libcurl4-openssl-dev libssl-dev libjson-c-dev libesmtp-dev libyara-dev libgtk-3-dev
+     ```
+   * macOS:
 
-Linux:
-Instale pacotes: sudo apt update && sudo apt install libcurl4-openssl-dev libssl-dev libjson-c-dev libesmtp-dev libyara-dev libgtk-3-dev.
+     ```bash
+     brew install libcurl openssl json-c libesmtp yara
+     ```
+   * FreeBSD:
 
+     ```bash
+     sudo pkg install libcurl openssl json-c libesmtp yara gtk3
+     ```
 
-macOS:
-Instale Homebrew: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)".
-Instale pacotes: brew install libcurl openssl json-c libesmtp yara.
+4. **Compile the Program**
 
+   * Windows:
 
-FreeBSD:
-Instale pacotes: sudo pkg install libcurl openssl json-c libesmtp yara gtk3.
+     ```bash
+     gcc -o malware_detector MalwareDetector.c -lws2_32 -lcurl -lcrypto -liphlpapi -ljson-c -lesmtp -lyara
+     ```
+   * Linux:
 
+     ```bash
+     gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread
+     ```
+   * macOS:
 
+     ```bash
+     gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -framework Cocoa
+     ```
+   * FreeBSD:
 
+     ```bash
+     gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread
+     ```
 
-## Compile o Programa:
-Windows: gcc -o malware_detector MalwareDetector.c -lws2_32 -lcurl -lcrypto -liphlpapi -ljson-c -lesmtp -lyara.
-Linux: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread.
-macOS: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -framework Cocoa.
-FreeBSD: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread.
+---
 
+## Configuration in C
 
+Edit definitions at the beginning of the script:
 
-## Configuração no C:
+* `SCAN_DIR`: Scan directory (default: `scan/`).
+* `REPORT_DIR`: JSON reports directory (default: `logs/reports/`).
+* `LOG_FILE`: Log file path (default: `logs/malware_detector.log`).
+* `YARA_RULES`: YARA rules file (default: `rules.yar`).
+* `SIGNATURES_FILE`: SHA-256 signatures file (default: `signatures.txt`).
+* `WEBHOOK_URL`: Discord webhook URL.
+* `SPLUNK_HEC_URL`, `SPLUNK_HEC_TOKEN`: Splunk configuration.
+* `ELK_URL`: ELK endpoint (e.g., `http://localhost:9200/_bulk`).
+* `SMTP_*`: Email configuration.
+* `SCAN_INTERVAL`: Default: 60 seconds.
+* `CPU_THRESHOLD`: Default: 80%.
+* `ENTROPY_THRESHOLD`: Default: 7.0.
 
-Abra o script e edite as definições no início:
+Example:
 
-SCAN_DIR: Diretório para escaneamento (padrão: scan/).
-REPORT_DIR: Diretório para relatórios JSON (padrão: logs/reports/).
-LOG_FILE: Arquivo de log (padrão: logs/malware_detector.log).
-YARA_RULES: Arquivo com regras YARA (padrão: rules.yar).
-SIGNATURES_FILE: Arquivo com assinaturas SHA-256 (padrão: signatures.txt).
-WEBHOOK_URL: URL de um webhook Discord (crie em Discord > Server Settings > Integrations).
-SPLUNK_HEC_URL, SPLUNK_HEC_TOKEN: URL e token do Splunk HEC (configure no Splunk).
-ELK_URL: URL do ELK (ex.: http://localhost:9200/_bulk).
-SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_TO: Configurações para envio de email (ex.: Gmail com senha de app).
-SCAN_INTERVAL: Intervalo de escaneamento (padrão: 60 segundos).
-MAX_LOG_SIZE: Tamanho máximo do buffer de log (padrão: 16384 bytes).
-CPU_THRESHOLD: Limite de uso de CPU (padrão: 80%).
-MEMORY_PATTERN: Padrão para detecção em memória (padrão: malware).
-ENTROPY_THRESHOLD: Limite de entropia para malwares polimórficos (padrão: 7.0).
+```c
+#define SCAN_DIR "scan/"
+#define REPORT_DIR "logs/reports/"
+#define LOG_FILE "logs/malware_detector.log"
+#define YARA_RULES "rules.yar"
+#define SIGNATURES_FILE "signatures.txt"
+#define CPU_THRESHOLD 80
+#define ENTROPY_THRESHOLD 7.0
+```
 
+---
 
-Crie arquivos signatures.txt (ex.: d41d8cd98f00b204e9800998ecf8427e) e rules.yar (ex.: rule TestRule { strings: $a = "malware" condition: $a }).
+## Usage
 
-Ajuste as Configurações:
-Edite as definições no script (ex.: WEBHOOK_URL, SPLUNK_*, ELK_URL, SMTP_*, SCAN_DIR, YARA_RULES).
-Para Gmail, crie uma senha de aplicativo em myaccount.google.com > Security > 2-Step Verification > App Passwords.
-Para Splunk, configure o HTTP Event Collector em splunk.com e obtenha SPLUNK_HEC_URL e SPLUNK_HEC_TOKEN.
-Para ELK, configure o endpoint HTTP em elastic.co (ex.: http://localhost:9200/_bulk).
+* **Run the program**
 
+  ```bash
+  ./malware_detector
+  ```
+* **Scan Test Files**: Place them inside `scan/` with hashes/rules in `signatures.txt` and `rules.yar`.
+* **Logs**: Check `logs/malware_detector.log`.
+* **Reports**: Found in `logs/reports/`.
+* **Alerts**: Sent via webhook/email/Splunk/ELK/SIEM.
+* **GUI**: Start/Stop/Export buttons with CPU graphs.
+* **Stopping**: Press any key (CLI) or Stop button (GUI).
 
-## Compile e Execute:
-Windows: gcc -o malware_detector MalwareDetector.c -lws2_32 -lcurl -lcrypto -liphlpapi -ljson-c -lesmtp -lyara && ./malware_detector.
-Linux: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread && ./malware_detector.
-macOS: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -framework Cocoa && ./malware_detector.
-FreeBSD: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread && ./malware_detector.
+---
 
+## Example Use Cases
 
-Teste:
-Coloque arquivos de teste em scan/ e adicione hashes/regras em signatures.txt/rules.yar.
-Execute em uma máquina Windows/Linux/macOS/FreeBSD autorizada.
-Verifique logs em logs/malware_detector.log, relatórios JSON em logs/reports/, e alertas via webhook/email/Splunk/ELK/SIEM.
-Interaja com a GUI (botões Iniciar/Parar/Exportar, gráficos de CPU).
-Pressione qualquer tecla (CLI) ou feche a janela (GUI) para parar.
+* **Local Scanning**: Detects malicious files, polymorphic malware, suspicious processes, memory injections, rootkits, and system modifications.
+* **Remote Monitoring**: Real-time alerts via Discord, Gmail (SMTP), Splunk HEC, ELK, or SIEM.
+* **Report Analysis**: Review JSON reports for detailed results.
+* **Expansion**: Add exploit detection, QRadar integration, or network traffic analysis.
 
+---
 
-Parar o Programa:
-Pressione qualquer tecla no terminal ou use o botão "Parar" na GUI.
+## Legal & Ethical Disclaimer
 
-
-
-## Exemplos de Uso:
-
-Escaneamento Local: Execute para detectar arquivos maliciosos, malwares polimórficos, processos suspeitos, malwares em memória, rootkits, e alterações no sistema via GUI/CLI.
-Monitoramento Remoto: Configure webhook (Discord), SMTP (Gmail), Splunk (HEC), ELK (HTTP), e SIEM para alertas em tempo real.
-Análise de Relatórios: Use os arquivos JSON em logs/reports/ para análise detalhada.
-Expansão: Adicione suporte a detecção de exploits, integração com QRadar, ou análise de tráfego de rede.
-
-Aviso Legal e Ético:
-
-Este script é para fins educativos e testes em sistemas com permissão explícita. Uso não autorizado viola leis como o Código Penal Brasileiro (art. 154-A), LGPD, ou regulamentos internacionais ().
-Sempre obtenha autorização por escrito antes de usar em qualquer sistema.
-Use em ambientes controlados (ex.: máquina local com permissão) para auditorias de segurança.
+This script is for **educational purposes** and **authorized testing only**.
+Unauthorized use is illegal (Brazilian Penal Code Art. 154-A, LGPD, GDPR, etc.).
+Always obtain **written authorization** before scanning any system.
+Use in controlled environments (e.g., local machine with permission).
