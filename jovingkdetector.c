@@ -12,6 +12,14 @@
 #include <windows.h>
 #include <tlhelp32.h>
 #include <iphlpapi.h>
+#elif defined(__APPLE__)
+#include <libproc.h>
+#include <mach/mach.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <objc/objc.h>
+#include <objc/runtime.h>
+#include <Cocoa/Cocoa.h>
 #else
 #include <dirent.h>
 #include <sys/stat.h>
@@ -23,13 +31,16 @@
 #endif
 
 #include <esmtp.h>
-// hygark, sempre há algo nos observando, que tristeza.
+// hygark, sempre há algo nos observando.
 // Configurações personalizáveis
 #define SCAN_DIR "scan/" // Diretório para escaneamento
 #define REPORT_DIR "logs/reports/" // Diretório para relatórios JSON
 #define LOG_FILE "logs/malware_detector.log" // Arquivo de log
 #define YARA_RULES "rules.yar" // Arquivo com regras YARA
+#define SIGNATURES_FILE "signatures.txt" // Arquivo com assinaturas SHA-256
 #define WEBHOOK_URL "" // URL de webhook (ex.: Discord)
+#define SPLUNK_HEC_URL "" // URL do Splunk HTTP Event Collector
+#define SPLUNK_HEC_TOKEN "" // Token do Splunk HEC
 #define SMTP_SERVER "smtp.gmail.com" // Servidor SMTP
 #define SMTP_PORT 587 // Porta SMTP
 #define SMTP_USER "" // Usuário SMTP (ex.: seuemail@gmail.com)
@@ -38,7 +49,7 @@
 #define SCAN_INTERVAL 60 // Intervalo de escaneamento (segundos)
 #define MAX_LOG_SIZE 16384 // Tamanho máximo do buffer de log
 #define CPU_THRESHOLD 80 // Limite de uso de CPU (%)
-#define SIGNATURES_FILE "signatures.txt" // Arquivo com assinaturas SHA-256
+#define MEMORY_PATTERN "malware" // Padrão de exemplo para detecção em memória
 
 // Estado do programa
 typedef struct {
@@ -47,16 +58,19 @@ typedef struct {
     int total_malwares_detected;
     int total_processes_scanned;
     int total_rootkits_detected;
+    int total_memory_threats;
     char log_buffer[MAX_LOG_SIZE];
     json_object *report_json;
     #ifdef _WIN32
     HWND hwnd;
+    #elif defined(__APPLE__)
+    id window;
     #else
     GtkWidget *window;
     #endif
 } ScriptState;
 
-ScriptState state = {0, 0, 0, 0, 0, {0}, NULL};
+ScriptState state = {0, 0, 0, 0, 0, 0, {0}, NULL};
 
 // Função para calcular hash SHA-256
 void calculate_sha256(const char *path, unsigned char *output) {
@@ -147,6 +161,8 @@ void add_json_event(const char *type, const char *details) {
 void save_json_report() {
     #ifdef _WIN32
     CreateDirectory(REPORT_DIR, NULL);
+    #elif defined(__APPLE__)
+    mkdir(REPORT_DIR, 0777);
     #else
     mkdir(REPORT_DIR, 0777);
     #endif
@@ -171,6 +187,13 @@ int check_cpu_usage() {
         ULONGLONG idle = idleTime.dwLowDateTime;
         return (total > 0) ? (100 - (idle * 100 / total)) : 0;
     }
+    #elif defined(__APPLE__)
+    FILE *fp = popen("top -l 1 | grep 'CPU usage' | awk '{print $3}'", "r");
+    if (!fp) return 0;
+    float cpu;
+    fscanf(fp, "%f", &cpu);
+    pclose(fp);
+    return (int)cpu;
     #else
     FILE *fp = fopen("/proc/stat", "r");
     if (!fp) return 0;
@@ -183,11 +206,13 @@ int check_cpu_usage() {
     return 0;
 }
 
-// Função para enviar logs (arquivo, webhook, email, SIEM)
+// Função para enviar logs (arquivo, webhook, email, Splunk, SIEM)
 void log_message(const char *level, const char *message) {
     // Log em arquivo
     #ifdef _WIN32
     CreateDirectory("logs", NULL);
+    #elif defined(__APPLE__)
+    mkdir("logs", 0777);
     #else
     mkdir("logs", 0777);
     #endif
@@ -208,6 +233,28 @@ void log_message(const char *level, const char *message) {
             curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload);
             curl_easy_setopt(curl, CURLOPT_POST, 1L);
             curl_easy_perform(curl);
+            curl_easy_cleanup(curl);
+        }
+    }
+
+    // Log via Splunk HEC
+    if (strlen(SPLUNK_HEC_URL) > 0 && strlen(SPLUNK_HEC_TOKEN) > 0) {
+        CURL *curl = curl_easy_init();
+        if (curl) {
+            char payload[512];
+            snprintf(payload, sizeof(payload), "{\"event\": {\"level\": \"%s\", \"message\": \"%s\", \"time\": %ld}}",
+                     level, message, time(NULL));
+            struct curl_slist *headers = NULL;
+            char auth_header[256];
+            snprintf(auth_header, sizeof(auth_header), "Authorization: Splunk %s", SPLUNK_HEC_TOKEN);
+            headers = curl_slist_append(headers, auth_header);
+            headers = curl_slist_append(headers, "Content-Type: application/json");
+            curl_easy_setopt(curl, CURLOPT_URL, SPLUNK_HEC_URL);
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload);
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+            curl_easy_setopt(curl, CURLOPT_POST, 1L);
+            curl_easy_perform(curl);
+            curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
         }
     }
@@ -236,6 +283,10 @@ void log_message(const char *level, const char *message) {
                     0, 0, NULL, 1, 0, strings, NULL);
         DeregisterEventSource(hEventLog);
     }
+    #elif defined(__APPLE__)
+    openlog("MalwareDetector", LOG_PID, LOG_USER);
+    syslog(strcmp(level, "ALERT") == 0 ? LOG_ERR : LOG_INFO, "%s", message);
+    closelog();
     #else
     openlog("MalwareDetector", LOG_PID, LOG_USER);
     syslog(strcmp(level, "ALERT") == 0 ? LOG_ERR : LOG_INFO, "%s", message);
@@ -249,6 +300,38 @@ void log_message(const char *level, const char *message) {
 }
 
 #ifdef _WIN32
+// Função para detecção em memória (Windows)
+void scan_memory() {
+    HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hProcessSnap == INVALID_HANDLE_VALUE) return;
+
+    PROCESSENTRY32 pe32;
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+    if (!Process32First(hProcessSnap, &pe32)) {
+        CloseHandle(hProcessSnap);
+        return;
+    }
+
+    do {
+        HANDLE hProcess = OpenProcess(PROCESS_VM_READ, FALSE, pe32.th32ProcessID);
+        if (hProcess) {
+            char buffer[1024];
+            SIZE_T bytesRead;
+            if (ReadProcessMemory(hProcess, (LPCVOID)0x1000000, buffer, sizeof(buffer), &bytesRead)) {
+                if (strstr(buffer, MEMORY_PATTERN)) {
+                    state.total_memory_threats++;
+                    char msg[512];
+                    snprintf(msg, sizeof(msg), "Malware em memória detectado: %s (PID: %lu)", pe32.szExeFile, pe32.th32ProcessID);
+                    log_message("ALERT", msg);
+                }
+            }
+            CloseHandle(hProcess);
+        }
+    } while (Process32Next(hProcessSnap, &pe32));
+
+    CloseHandle(hProcessSnap);
+}
+
 // Função para detectar rootkits (Windows)
 void detect_rootkits() {
     HANDLE hProcessSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -358,6 +441,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         case WM_DESTROY:
             PostQuitMessage(0);
+            state.is_running = 0;
             break;
         default:
             return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -376,7 +460,162 @@ void init_gui() {
                              CW_USEDEFAULT, CW_USEDEFAULT, 500, 350, NULL, NULL, wc.hInstance, NULL);
     ShowWindow(state.hwnd, SW_SHOW);
 }
+
+#elif defined(__APPLE__)
+// Função para detecção em memória (macOS)
+void scan_memory() {
+    int pids[1024];
+    int count = proc_listpids(PROC_ALL_PIDS, 0, pids, sizeof(pids));
+    count /= sizeof(int);
+
+    for (int i = 0; i < count; i++) {
+        task_t task;
+        if (task_for_pid(mach_task_self(), pids[i], &task) == KERN_SUCCESS) {
+            char buffer[1024];
+            vm_size_t bytesRead;
+            if (vm_read(task, 0x1000000, sizeof(buffer), (vm_offset_t *)&buffer, &bytesRead) == KERN_SUCCESS) {
+                if (strstr(buffer, MEMORY_PATTERN)) {
+                    state.total_memory_threats++;
+                    char msg[512];
+                    char proc_name[256];
+                    proc_name_for_pid(pids[i], proc_name, sizeof(proc_name));
+                    snprintf(msg, sizeof(msg), "Malware em memória detectado: %s (PID: %d)", proc_name, pids[i]);
+                    log_message("ALERT", msg);
+                }
+            }
+            mach_port_deallocate(mach_task_self(), task);
+        }
+    }
+}
+
+// Função para detectar rootkits (macOS)
+void detect_rootkits() {
+    int pids[1024];
+    int count = proc_listpids(PROC_ALL_PIDS, 0, pids, sizeof(pids));
+    count /= sizeof(int);
+
+    for (int i = 0; i < count; i++) {
+        char path[256];
+        if (proc_pidpath(pids[i], path, sizeof(path)) <= 0) {
+            state.total_rootkits_detected++;
+            char msg[512];
+            snprintf(msg, sizeof(msg), "Rootkit potencial detectado: Processo oculto (PID: %d)", pids[i]);
+            log_message("ALERT", msg);
+        }
+    }
+}
+
+// Função para escanear processos (macOS)
+void scan_processes() {
+    int pids[1024];
+    int count = proc_listpids(PROC_ALL_PIDS, 0, pids, sizeof(pids));
+    count /= sizeof(int);
+
+    for (int i = 0; i < count; i++) {
+        state.total_processes_scanned++;
+        struct proc_bsdinfo proc;
+        if (proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, &proc, sizeof(proc)) > 0) {
+            if (proc.pbi_utime + proc.pbi_stime > 1000000) {
+                char msg[512];
+                snprintf(msg, sizeof(msg), "Processo suspeito detectado: %s (PID: %d)", proc.pbi_name, pids[i]);
+                log_message("WARNING", msg);
+            }
+        }
+    }
+}
+
+// Função para verificar alterações em arquivos críticos (macOS)
+void check_critical_files() {
+    struct stat st;
+    const char *files[] = {"/etc/passwd", "/etc/sudoers", "/Library/Extensions", NULL};
+    for (int i = 0; files[i]; i++) {
+        if (stat(files[i], &st) == 0) {
+            if (st.st_mtime > time(NULL) - 3600) {
+                char msg[512];
+                snprintf(msg, sizeof(msg), "Alteração detectada em arquivo crítico: %s", files[i]);
+                log_message("WARNING", msg);
+            }
+        }
+    }
+}
+
+// Função para verificar conexões de rede (macOS)
+void check_network_connections() {
+    FILE *fp = popen("netstat -an | grep ESTABLISHED", "r");
+    if (!fp) return;
+
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        char remote_addr[64];
+        int remote_port;
+        if (sscanf(line, "%*s %*s %*s %*s %s", remote_addr) == 1) {
+            char *port = strrchr(remote_addr, '.');
+            if (port) {
+                *port = '\0';
+                remote_port = atoi(port + 1);
+                char msg[512];
+                snprintf(msg, sizeof(msg), "Conexão suspeita detectada: %s:%d", remote_addr, remote_port);
+                log_message("WARNING", msg);
+            }
+        }
+    }
+    pclose(fp);
+}
+
+// Função para interface gráfica (macOS)
+void init_gui() {
+    @autoreleasepool {
+        [NSApplication sharedApplication];
+        [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+
+        NSWindow *window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 500, 350)
+                                                      styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+                                                        backing:NSBackingStoreBuffered
+                                                          defer:NO];
+        [window setTitle:@"MalwareDetector"];
+        [window center];
+
+        NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(10, 10, 460, 280)];
+        [textView setEditable:NO];
+        [textView setString:@"MalwareDetector rodando...\n"];
+        [[window contentView] addSubview:textView];
+
+        state.window = window;
+        [window makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+    }
+}
+
 #else
+// Função para detecção em memória (Linux)
+void scan_memory() {
+    DIR *dir = opendir("/proc");
+    if (!dir) return;
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type != DT_DIR) continue;
+        int pid = atoi(entry->d_name);
+        if (pid <= 0) continue;
+
+        char path[256];
+        snprintf(path, sizeof(path), "/proc/%d/mem", pid);
+        FILE *fp = fopen(path, "rb");
+        if (fp) {
+            char buffer[1024];
+            size_t bytes = fread(buffer, 1, sizeof(buffer), fp);
+            if (bytes > 0 && strstr(buffer, MEMORY_PATTERN)) {
+                state.total_memory_threats++;
+                char msg[512];
+                snprintf(msg, sizeof(msg), "Malware em memória detectado: PID %d", pid);
+                log_message("ALERT", msg);
+            }
+            fclose(fp);
+        }
+    }
+    closedir(dir);
+}
+
 // Função para detectar rootkits (Linux)
 void detect_rootkits() {
     DIR *dir = opendir("/proc");
@@ -586,6 +825,8 @@ void *scan_thread(void *arg) {
             log_message("WARNING", "Uso de CPU alto, pausando escaneamento por 1s");
             #ifdef _WIN32
             Sleep(1000);
+            #elif defined(__APPLE__)
+            sleep(1);
             #else
             sleep(1);
             #endif
@@ -594,11 +835,16 @@ void *scan_thread(void *arg) {
 
         scan_files(SCAN_DIR);
         scan_processes();
+        scan_memory();
         detect_rootkits();
         #ifdef _WIN32
         check_registry_changes();
         check_network_connections();
         Sleep(SCAN_INTERVAL * 1000);
+        #elif defined(__APPLE__)
+        check_critical_files();
+        check_network_connections();
+        sleep(SCAN_INTERVAL);
         #else
         check_critical_files();
         check_network_connections();
@@ -608,7 +854,7 @@ void *scan_thread(void *arg) {
     return NULL;
 }
 
-// Função para rodar GUI (Windows)
+// Função para rodar GUI
 #ifdef _WIN32
 void *gui_thread(void *arg) {
     init_gui();
@@ -619,8 +865,13 @@ void *gui_thread(void *arg) {
     }
     return NULL;
 }
+#elif defined(__APPLE__)
+void *gui_thread(void *arg) {
+    init_gui();
+    [NSApp run];
+    return NULL;
+}
 #else
-// Função para rodar GUI (Linux)
 void *gui_thread(void *arg) {
     init_gui();
     gtk_main();
@@ -634,6 +885,9 @@ int main(int argc, char *argv[]) {
     #ifdef _WIN32
     CreateDirectory("logs", NULL);
     CreateDirectory(REPORT_DIR, NULL);
+    #elif defined(__APPLE__)
+    mkdir("logs", 0777);
+    mkdir(REPORT_DIR, 0777);
     #else
     mkdir("logs", 0777);
     mkdir(REPORT_DIR, 0777);
