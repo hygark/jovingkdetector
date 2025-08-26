@@ -58,31 +58,31 @@ Copie o conteúdo de MalwareDetector.c para um arquivo C no seu diretório.
 
 ## Instale Dependências:
 
-## Windows:
+Windows:
 Instale MinGW: mingw-w64.org.
 Instale libcurl, OpenSSL, json-c, libesmtp, libyara (ex.: mingw-get install libcurl libssl json-c libesmtp libyara).
 
 
-## Linux:
+Linux:
 Instale pacotes: sudo apt update && sudo apt install libcurl4-openssl-dev libssl-dev libjson-c-dev libesmtp-dev libyara-dev libgtk-3-dev.
 
 
-## macOS:
+macOS:
 Instale Homebrew: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)".
 Instale pacotes: brew install libcurl openssl json-c libesmtp yara.
 
 
-## FreeBSD:
+FreeBSD:
 Instale pacotes: sudo pkg install libcurl openssl json-c libesmtp yara gtk3.
 
 
 
 
 ## Compile o Programa:
-## Windows: gcc -o malware_detector MalwareDetector.c -lws2_32 -lcurl -lcrypto -liphlpapi -ljson-c -lesmtp -lyara.
-## Linux: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread.
-## macOS: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -framework Cocoa.
-## FreeBSD: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread.
+Windows: gcc -o malware_detector MalwareDetector.c -lws2_32 -lcurl -lcrypto -liphlpapi -ljson-c -lesmtp -lyara.
+Linux: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread.
+macOS: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -framework Cocoa.
+FreeBSD: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread.
 
 
 
@@ -116,10 +116,10 @@ Para ELK, configure o endpoint HTTP em elastic.co (ex.: http://localhost:9200/_b
 
 
 ## Compile e Execute:
-## Windows: gcc -o malware_detector MalwareDetector.c -lws2_32 -lcurl -lcrypto -liphlpapi -ljson-c -lesmtp -lyara && ./malware_detector.
-## Linux: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread && ./malware_detector.
-## macOS: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -framework Cocoa && ./malware_detector.
-## FreeBSD: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread && ./malware_detector.
+Windows: gcc -o malware_detector MalwareDetector.c -lws2_32 -lcurl -lcrypto -liphlpapi -ljson-c -lesmtp -lyara && ./malware_detector.
+Linux: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread && ./malware_detector.
+macOS: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -framework Cocoa && ./malware_detector.
+FreeBSD: gcc -o malware_detector MalwareDetector.c -lcurl -lcrypto -ljson-c -lesmtp -lyara -lgtk-3 -pthread && ./malware_detector.
 
 
 Teste:
