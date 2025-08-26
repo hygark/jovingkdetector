@@ -49,7 +49,7 @@ FreeBSD: pkg install libcurl openssl json-c libesmtp yara gtk3.
 
 Crie um Repositório no GitHub (opcional para versionamento):
 Vá para github.com e crie um novo repositório chamado "MalwareDetector".
-Clone o repo: git clone https://github.com/hygark/MalwareDetector.git.
+Clone o repo: git clone https://github.com/hygark/jovingdetector.git.
 
 
 Adicione o Script:
